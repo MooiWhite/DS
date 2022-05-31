@@ -143,6 +143,7 @@ int open_file(char* filename, size_t chunk_size, Master* master, size_t offset){
 void read_OSM(void){
     int filed;
     char *pointer;
+    struct stat shmobj_st;
 
     filed = shm_open("2", O_RDONLY, 0); //Creamos un objeto de memoria compartido
     if (filed == -1){
