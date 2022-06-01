@@ -138,41 +138,42 @@ int open_file(char* filename, size_t chunk_size, Master* master, size_t offset){
     }
 }
 
-void read_chunk(/*void *id_chserver*/int id_chserver,size_t start,size_t end){
+void read_chunk_on_server(void *id_chserver){
     int filed;
     char *pointer;
     char *ID;
     struct stat shmobj_st;
 
-    sprintf(ID,"%d",id_chserver);
-    filed = shm_open(ID/*ID CHUNK_SERVER*/, O_RDONLY, 0); //READING SHARED OBJECT MEM 
+    if (id_chserver != NULL){
+        sprintf(ID,"%d",(int)id_chserver);
+        filed = shm_open(ID/*ID CHUNK_SERVER*/, O_RDONLY, 0); //READING SHARED OBJECT MEM 
+        if (filed == -1){
+            printf("Error file descriptor %s\n",strerror(errno));
+            exit(1);
+        }
 
-    if (filed == -1){
-        printf("Error file descriptor %s\n",strerror(errno));
-        exit(1);
+        if (fstat(filed,&shmobj_st) == -1){
+            printf("Error fstat\n");
+            exit(1);
+        }
+
+        pointer =  mmap(NULL, 2, PROT_READ, MAP_SHARED,filed, 0);
+        if (pointer == MAP_FAILED){
+            printf("Mapp failed in read mapping process\n");
+            exit(1);
+        }
+
+        printf("%s \n", pointer);
+        printf("\n\n");
+        for (int i = 0;i<CHUNK_SIZE;i++){
+            printf("%c",pointer[i]);
+        }
+        printf("\n\n");
+        close(filed);
     }
-
-    if (fstat(filed,&shmobj_st) == -1){
-        printf("Error fstat\n");
-        exit(1);
-    }
-
-    pointer =  mmap(NULL, 2, PROT_READ, MAP_SHARED,filed, 0);
-    if (pointer == MAP_FAILED){
-        printf("Mapp failed in read mapping process\n");
-        exit(1);
-    }
-
-    for (int i = start;i<end;i++){
-        printf("%c",pointer[i]);
-    }
-
-    printf("\n\n");
-    close(filed);
-
 }
 
-void *read_row(void *master){
+void *read_chunk(void *master){
     Master *a_master = master;
     printf("\nTHIS IS:\n");
     printf("Row master test [FILENAME]: %s\n",a_master->filename);
@@ -180,15 +181,20 @@ void *read_row(void *master){
     printf("Row master test [START_BYTE] %d\n",a_master->start_byte);
     printf("Row master test [END_BYTE] %d\n",a_master->end_byte);
     printf("\n\n");
-    read_chunk(1,a_master->start_byte,a_master->end_byte);
     return NULL;
 }
 
-void *client_routine(void *unused){
+void *client1_routine(void *unused){
     pthread_mutex_lock(&mutex);
-    read_row(unused);
+    read_chunk(unused);
     pthread_mutex_unlock(&mutex);
 
+}
+
+void *client2_routine(void *unused){
+    pthread_mutex_lock(&mutex);
+    //read_OSM(unused);
+    pthread_mutex_unlock(&mutex);
 }
 
 void errorExit(char *strerr){
@@ -217,7 +223,8 @@ int main(void){
     char ID[10];
     int fd;
     int client_chunk_id;
-
+    //size_t offset;
+    //size_t CHUNK_SIZE;
     struct stat shmobj_st; //for get the offset
     stat (FILENAME, &shmobj_st);
     Master master[10];//We will have a certain number of rows as files we have
@@ -237,16 +244,25 @@ int main(void){
 
     for (int i=1; i<=offset; i++){
         if (master[i].IDChunk == client_chunk_id){
-            for (int j = 1; j <=NUM_CLIENTS; j++){
-                if (0 != pthread_create(&clients[j],NULL, client_routine,(void*) &master[i]))
+            for (int j = 1; j <NUM_CLIENTS; j++){
+                if (0 != pthread_create(&clients[j],NULL, client1_routine,(void*) &master[i]))
                     errorExit("thread reading cannot be created");
             }
-            for (int i = 1; i <=NUM_CLIENTS; i++){
+            for (int i = 1; i <NUM_CLIENTS; i++){
                 pthread_join(clients[i], NULL);
             }
 
         }
     }
+
+    /*for (int i = 1; i <NUM_CLIENTS; i++){
+        if (0 != pthread_create(&clients[i],NULL, client1_routine,(void* restrict) i))
+        errorExit("thread reading cannot be created");
+    }
+
+    for (int i = 1; i <NUM_CLIENTS; i++){
+        pthread_join(clients[i], NULL);
+    }*/
 
     return 0;
 }
